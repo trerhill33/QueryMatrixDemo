@@ -40,4 +40,13 @@ The **Query Matrix Builder** is a Blazor WebAssembly application that empowers u
 
 ### Add Conditions and Groups ➕
 - Use the **Add Condition** button to define a query condition.
-- Use the **Add Group** button to create nested logical groups
+- Use the **Add Group** button to create nested logical groups.
+
+### Preview Query 🔍
+- View the query in JSON format using the **Show Query** button.
+
+### Execute Query ⚡
+- Click the **Execute Query** button to run the query against the database.
+
+### Export Results 📤
+- Download query results as a JSON file using the **Export** button.
