@@ -113,8 +113,27 @@ public class QueryMatrixService : IQueryMatrixService
 
     private Expression BuildStringComparisonExpression(Expression property, Expression pattern, StringComparison comparison)
     {
-        var containsMethod = typeof(string).GetMethod("Contains", new[] { typeof(string), typeof(StringComparison) })!;
-        return Expression.Call(property, containsMethod, pattern, Expression.Constant(comparison));
+        // Default to simple string.Contains if no specific StringComparison is needed
+        if (comparison == StringComparison.Ordinal || comparison == StringComparison.InvariantCulture)
+        {
+            var containsMethod = typeof(string).GetMethod("Contains", new[] { typeof(string) })!;
+            return Expression.Call(property, containsMethod, pattern);
+        }
+
+        // Handle case-insensitive and other comparisons explicitly
+        if (comparison == StringComparison.OrdinalIgnoreCase || comparison == StringComparison.InvariantCultureIgnoreCase)
+        {
+            // Use ToLowerInvariant for case-insensitive Contains
+            var toLowerMethod = typeof(string).GetMethod("ToLowerInvariant")!;
+            var propertyLower = Expression.Call(property, toLowerMethod);
+            var patternLower = Expression.Call(pattern, toLowerMethod);
+
+            var containsMethod = typeof(string).GetMethod("Contains", new[] { typeof(string) })!;
+            return Expression.Call(propertyLower, containsMethod, patternLower);
+        }
+
+        // Default fallback if unsupported
+        throw new NotSupportedException($"The comparison type {comparison} is not supported.");
     }
 
     private Expression BuildInExpression(Expression property, Expression values)
