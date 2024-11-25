@@ -1,0 +1,179 @@
+@using System.Reflection
+@using QueryMatrixDemo.Core.Models
+@using QueryMatrixDemo.Core.Operators
+@using QueryMatrixDemo.Core.Interfaces
+@inject IQueryMatrixService QueryMatrixService
+
+<div class="query-matrix-group @(Level > 0 ? "nested-group" : "root-group")">
+    <div class="group-header mb-3">
+        @if (Level > 0)
+        {
+            <div class="group-header mb-3 d-flex justify-content-between align-items-center">
+                <div class="operator-select">
+                    <select class="form-select form-select-sm" value="@Matrix.LogicalOperator.Value" @onchange="OnLogicalOperatorChanged">
+                        <option value="@QueryOperator.And.Value">AND</option>
+                        <option value="@QueryOperator.Or.Value">OR</option>
+                    </select>
+                </div>
+                @if (Level > 0)
+                {
+                    <button class="btn btn-outline-danger btn-sm ms-2" @onclick="RequestRemove">
+                        <span class="oi oi-trash"></span> Remove Group
+                    </button>
+                }
+            </div>
+        }
+        else
+        {
+            <div class="operator-select" style="width: 200px;">
+                <select class="form-select form-select-sm" value="@Matrix.LogicalOperator.Value" @onchange="OnLogicalOperatorChanged">
+                    <option value="@QueryOperator.And.Value">AND</option>
+                    <option value="@QueryOperator.Or.Value">OR</option>
+                </select>
+            </div>
+        }
+    </div>
+
+    <div class="conditions-container mb-3">
+        @foreach (var condition in Matrix.Conditions)
+        {
+            <div class="condition-item">
+                <QueryConditionEditor Condition="@condition"
+                                      AvailableProperties="@AvailableProperties"
+                                      OnConditionChanged="@(async (QueryCondition newCondition) => await HandleConditionChanged(condition, newCondition))"
+                                      OnRemoveCondition="@(() => RemoveCondition(condition))" />
+            </div>
+        }
+    </div>
+
+    @if (Matrix.NestedMatrices.Any())
+    {
+        <div class="nested-matrices-container mb-3">
+            @foreach (var nestedMatrix in Matrix.NestedMatrices)
+            {
+                <div class="nested-group-container">
+                    <QueryMatrixGroup Matrix="@nestedMatrix"
+                                      AvailableProperties="@AvailableProperties"
+                                      OnMatrixChanged="@(async (QueryMatrix newMatrix) => await HandleNestedMatrixChanged(nestedMatrix, newMatrix))"
+                                      OnRequestRemove="@(() => RemoveNestedMatrix(nestedMatrix))"
+                                      Level="@(Level + 1)" />
+                </div>
+            }
+        </div>
+    }
+
+    <div class="group-actions mb-3">
+<div class="group-actions mb-3 d-flex justify-content-start">
+    <button class="btn btn-outline-primary btn-sm me-2" @onclick="AddCondition">
+        <span class="oi oi-plus"></span> Add Condition
+    </button>
+    <button class="btn btn-outline-secondary btn-sm" @onclick="AddNestedGroup">
+        <span class="oi oi-layers"></span> Add Group
+    </button>
+</div>
+
+    </div>
+</div>
+
+@code {
+    [Parameter] public QueryMatrix Matrix { get; set; } = default!;
+    [Parameter] public IEnumerable<PropertyInfo> AvailableProperties { get; set; } = default!;
+    [Parameter] public EventCallback<QueryMatrix> OnMatrixChanged { get; set; }
+    [Parameter] public EventCallback OnRequestRemove { get; set; }
+    [Parameter] public int Level { get; set; } = 0;
+
+    private async Task OnLogicalOperatorChanged(ChangeEventArgs e)
+    {
+        var operatorValue = e.Value?.ToString() ?? QueryOperator.And.Value;
+        var newOperator = QueryOperator.FromString(operatorValue) ?? QueryOperator.And;
+        
+        Matrix = Matrix with { LogicalOperator = newOperator };
+        await OnMatrixChanged.InvokeAsync(Matrix);
+    }
+
+    private async Task AddCondition()
+    {
+        var firstProperty = AvailableProperties.FirstOrDefault();
+        var defaultOperator = firstProperty != null 
+            ? QueryMatrixService.GetValidOperatorsForProperty(firstProperty).First()
+            : QueryOperator.Equal;
+
+        var newCondition = new QueryCondition
+        {
+            Field = firstProperty?.Name ?? string.Empty,
+            Operator = defaultOperator,
+            Value = ConditionValue.Single(string.Empty)
+        };
+
+        Matrix = Matrix with
+        {
+            Conditions = Matrix.Conditions.Append(newCondition).ToList()
+        };
+
+        await OnMatrixChanged.InvokeAsync(Matrix);
+    }
+
+    private async Task AddNestedGroup()
+    {
+        var nestedMatrix = new QueryMatrix
+        {
+            LogicalOperator = QueryOperator.And,
+            Conditions = new List<QueryCondition>(),
+            NestedMatrices = new List<QueryMatrix>()
+        };
+
+        Matrix = Matrix with
+        {
+            NestedMatrices = Matrix.NestedMatrices.Append(nestedMatrix).ToList()
+        };
+
+        await OnMatrixChanged.InvokeAsync(Matrix);
+    }
+
+    private async Task HandleConditionChanged(QueryCondition oldCondition, QueryCondition newCondition)
+    {
+        var conditions = Matrix.Conditions.ToList();
+        var index = conditions.IndexOf(oldCondition);
+        if (index >= 0)
+        {
+            conditions[index] = newCondition;
+            Matrix = Matrix with { Conditions = conditions };
+            await OnMatrixChanged.InvokeAsync(Matrix);
+        }
+    }
+
+    private async Task HandleNestedMatrixChanged(QueryMatrix oldMatrix, QueryMatrix newMatrix)
+    {
+        var matrices = Matrix.NestedMatrices.ToList();
+        var index = matrices.IndexOf(oldMatrix);
+        if (index >= 0)
+        {
+            matrices[index] = newMatrix;
+            Matrix = Matrix with { NestedMatrices = matrices };
+            await OnMatrixChanged.InvokeAsync(Matrix);
+        }
+    }
+
+    private async Task RemoveCondition(QueryCondition condition)
+    {
+        Matrix = Matrix with
+        {
+            Conditions = Matrix.Conditions.Where(c => c != condition).ToList()
+        };
+        await OnMatrixChanged.InvokeAsync(Matrix);
+    }
+
+    private async Task RemoveNestedMatrix(QueryMatrix nestedMatrix)
+    {
+        Matrix = Matrix with
+        {
+            NestedMatrices = Matrix.NestedMatrices.Where(m => m != nestedMatrix).ToList()
+        };
+        await OnMatrixChanged.InvokeAsync(Matrix);
+    }
+
+    private async Task RequestRemove()
+    {
+        await OnRequestRemove.InvokeAsync();
+    }
+}
