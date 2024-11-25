@@ -22,3 +22,22 @@ The **Query Matrix Builder** is a Blazor WebAssembly application that empowers u
    ```bash
    git clone https://github.com/your-username/query-matrix-builder.git
    cd query-matrix-builder
+
+## ⚙️ Installation
+
+### Set Up Backend 🖥️
+
+1. Navigate to the `Server` project directory.
+2. Update the `appsettings.json` file with your PostgreSQL connection string.
+3. Run the database migrations:
+   ```bash
+   dotnet ef database update
+
+## 🧑‍💻 Usage
+
+### Select an Entity Type 🗂️
+- Choose an entity type from the dropdown (e.g., `Product`, `Category`).
+
+### Add Conditions and Groups ➕
+- Use the **Add Condition** button to define a query condition.
+- Use the **Add Group** button to create nested logical groups
