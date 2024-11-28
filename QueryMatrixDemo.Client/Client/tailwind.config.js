@@ -7,7 +7,19 @@ module.exports = {
         "./Shared/**/*.razor"
     ],
     theme: {
-        extend: {},
+        theme: {
+            extend: {
+                visibility: {
+                    hidden: 'hidden',
+                    visible: 'visible',
+                },
+            },
+        },
     },
-    plugins: [],
+    corePlugins: {
+        // Disable Tailwind's visibility plugin to avoid conflicts
+        visibility: false,
+        // Disable Tailwind's collapse plugin to let Bootstrap handle it
+        collapse: false,
+    }
 };

@@ -170,6 +170,19 @@ public class QueryMatrixService : IQueryMatrixService
         return result;
     }
 
+    private Expression CombineExpressions(IEnumerable<Expression> expressions, QueryOperator logicalOperator)
+    {
+        return logicalOperator.Value switch
+        {
+            "_and" => expressions.Aggregate(Expression.AndAlso),
+            "_or" => expressions.Aggregate(Expression.OrElse),
+            "_not" => Expression.Not(expressions.Single()),
+            _ => throw new NotSupportedException($"Logical operator {logicalOperator.Value} is not supported")
+        };
+    }
+
+
+
     private object? ConvertValue(object? value, Type targetType)
     {
         if (value == null)
