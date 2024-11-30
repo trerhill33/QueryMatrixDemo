@@ -1,7 +1,7 @@
+using QueryMatrixDemo.Core.Helpers;
 using QueryMatrixDemo.Core.Interfaces;
 using QueryMatrixDemo.Core.Models;
 using QueryMatrixDemo.Core.Operators;
-using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.Json;
@@ -89,10 +89,10 @@ public class QueryMatrixService : IQueryMatrixService
             "_lt" => Expression.LessThan(property, value),
             "_gte" => Expression.GreaterThanOrEqual(property, value),
             "_lte" => Expression.LessThanOrEqual(property, value),
-            "_like" => BuildStringComparisonExpression(property, value, StringComparison.Ordinal),
-            "_ilike" => BuildStringComparisonExpression(property, value, StringComparison.OrdinalIgnoreCase),
-            "_in" => BuildInExpression(property, value),
-            "_nin" => Expression.Not(BuildInExpression(property, value)),
+            "_like" => ExpressionHelper.BuildStringComparisonExpression(property, value, StringComparison.Ordinal),
+            "_ilike" => ExpressionHelper.BuildStringComparisonExpression(property, value, StringComparison.OrdinalIgnoreCase),
+            "_in" => ExpressionHelper.BuildInExpression(property, value),
+            "_nin" => Expression.Not(ExpressionHelper.BuildInExpression(property, value)),
             _ => throw new NotSupportedException($"Operator {op.Value} is not supported")
         };
     }
@@ -111,44 +111,6 @@ public class QueryMatrixService : IQueryMatrixService
         };
     }
 
-    private Expression BuildStringComparisonExpression(Expression property, Expression pattern, StringComparison comparison)
-    {
-        // Default to simple string.Contains if no specific StringComparison is needed
-        if (comparison == StringComparison.Ordinal || comparison == StringComparison.InvariantCulture)
-        {
-            var containsMethod = typeof(string).GetMethod("Contains", new[] { typeof(string) })!;
-            return Expression.Call(property, containsMethod, pattern);
-        }
-
-        // Handle case-insensitive and other comparisons explicitly
-        if (comparison == StringComparison.OrdinalIgnoreCase || comparison == StringComparison.InvariantCultureIgnoreCase)
-        {
-            // Use ToLowerInvariant for case-insensitive Contains
-            var toLowerMethod = typeof(string).GetMethod("ToLowerInvariant")!;
-            var propertyLower = Expression.Call(property, toLowerMethod);
-            var patternLower = Expression.Call(pattern, toLowerMethod);
-
-            var containsMethod = typeof(string).GetMethod("Contains", new[] { typeof(string) })!;
-            return Expression.Call(propertyLower, containsMethod, patternLower);
-        }
-
-        // Default fallback if unsupported
-        throw new NotSupportedException($"The comparison type {comparison} is not supported.");
-    }
-
-    private Expression BuildInExpression(Expression property, Expression values)
-    {
-        if (values is ConstantExpression constantExp && constantExp.Value is IEnumerable enumerable)
-        {
-            var method = typeof(Enumerable).GetMethods()
-                .First(m => m.Name == "Contains" && m.GetParameters().Length == 2)
-                .MakeGenericMethod(property.Type);
-
-            return Expression.Call(null, method, Expression.Constant(enumerable), property);
-        }
-
-        throw new NotSupportedException("Invalid values for IN operator");
-    }
 
     private Expression CombineExpressions(List<Expression> expressions, QueryOperator logicalOperator)
     {
@@ -180,7 +142,6 @@ public class QueryMatrixService : IQueryMatrixService
             _ => throw new NotSupportedException($"Logical operator {logicalOperator.Value} is not supported")
         };
     }
-
 
 
     private object? ConvertValue(object? value, Type targetType)
