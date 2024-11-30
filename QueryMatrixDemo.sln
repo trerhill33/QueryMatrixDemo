@@ -5,21 +5,18 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "QueryMatrixDemo.Client", "QueryMatrixDemo.Client", "{A95D98A1-3E2F-406C-8EC5-88107411D916}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QueryMatrixDemo.Client.Client", "QueryMatrixDemo.Client\Client\QueryMatrixDemo.Client.Client.csproj", "{810C901C-2B51-4CCC-99E9-C254031478C3}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "QueryMatrixDemo.Client.Client", "QueryMatrixDemo.Client\Client\QueryMatrixDemo.Client.Client.csproj", "{810C901C-2B51-4CCC-99E9-C254031478C3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QueryMatrixDemo.Client.Server", "QueryMatrixDemo.Client\Server\QueryMatrixDemo.Client.Server.csproj", "{4ECD9623-08DF-4EDD-9E80-2659AF3E80A7}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "QueryMatrixDemo.Client.Server", "QueryMatrixDemo.Client\Server\QueryMatrixDemo.Client.Server.csproj", "{4ECD9623-08DF-4EDD-9E80-2659AF3E80A7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QueryMatrixDemo.Shared", "QueryMatrixDemo.Shared\QueryMatrixDemo.Shared.csproj", "{4E3562FC-9C5C-4BDE-9C13-38786F7D33BC}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "QueryMatrixDemo.Shared", "QueryMatrixDemo.Shared\QueryMatrixDemo.Shared.csproj", "{4E3562FC-9C5C-4BDE-9C13-38786F7D33BC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "QueryMatrixDemo.Core", "QueryMatrixDemo.Core\QueryMatrixDemo.Core.csproj", "{C11CB923-1829-4979-8471-1901F3F13FDB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "QueryMatrixDemo.Core", "QueryMatrixDemo.Core\QueryMatrixDemo.Core.csproj", "{C11CB923-1829-4979-8471-1901F3F13FDB}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
-	EndGlobalSection
-	GlobalSection(SolutionProperties) = preSolution
-		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{810C901C-2B51-4CCC-99E9-C254031478C3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
@@ -39,8 +36,14 @@ Global
 		{C11CB923-1829-4979-8471-1901F3F13FDB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C11CB923-1829-4979-8471-1901F3F13FDB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{810C901C-2B51-4CCC-99E9-C254031478C3} = {A95D98A1-3E2F-406C-8EC5-88107411D916}
 		{4ECD9623-08DF-4EDD-9E80-2659AF3E80A7} = {A95D98A1-3E2F-406C-8EC5-88107411D916}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E0FFD41C-2BF5-4583-929E-BDB22F669EDC}
 	EndGlobalSection
 EndGlobal

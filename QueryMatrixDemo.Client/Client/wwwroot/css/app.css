@@ -160,3 +160,13 @@ a, .btn-link {
         background-color: transparent;
     }
 }
+
+.grid-stack {
+    background: #FAFAD2;
+}
+
+.grid-stack-item-content {
+    text-align: center;
+    background-color: #18BC9C;
+}
+

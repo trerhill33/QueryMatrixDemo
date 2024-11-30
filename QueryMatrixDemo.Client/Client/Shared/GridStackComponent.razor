@@ -1,0 +1,74 @@
+﻿@using Microsoft.JSInterop
+@using System.Text.Json 
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<div id="@GridId" class="grid-stack">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; } // Allow parent content
+    [Parameter] public int Column { get; set; } = 12; // Default columns
+    [Parameter] public int CellHeight { get; set; } = 70; // Default cell height
+    [Parameter] public string Margin { get; set; } = "10px"; // Default margin
+    [Parameter] public bool IsEditable { get; set; } = true;
+
+    private string GridId = "gridstack_" + Guid.NewGuid().ToString("N");
+    private IJSObjectReference? _module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            // Load JS module
+            _module = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "./js/gridstack-interop.js");
+
+            // Initialize GridStack
+            var options = new
+            {
+                column = Column,
+                cellHeight = CellHeight,
+                margin = Margin,
+                resizable = IsEditable,
+                draggable = IsEditable
+            };
+
+            await _module.InvokeVoidAsync("gridstackInterop.initialize", GridId, options);
+            Console.WriteLine($"GridStack initialized with ID: {GridId}");
+        }
+    }
+
+    public async Task AddWidget(object widget)
+    {
+        if (_module != null)
+        {
+            await _module.InvokeVoidAsync("gridstackInterop.addWidget", GridId, widget);
+        }
+    }
+
+    public async Task SaveLayout()
+    {
+        if (_module != null)
+        {
+            var layout = await _module.InvokeAsync<string>("gridstackInterop.saveLayout", GridId);
+            Console.WriteLine("Saved Layout: " + layout);
+        }
+    }
+
+    public async Task LoadLayout(string layoutJson)
+    {
+        if (_module != null)
+        {
+            await _module.InvokeVoidAsync("gridstackInterop.loadLayout", GridId, layoutJson);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module != null)
+        {
+            await _module.DisposeAsync();
+        }
+    }
+}

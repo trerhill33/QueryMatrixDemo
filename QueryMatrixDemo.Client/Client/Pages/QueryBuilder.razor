@@ -4,36 +4,36 @@
 <PageTitle>Query Matrix Builder</PageTitle>
 
 <div class="container-fluid">
-    <div class="row">
-        <div class="col-12">
-            <h1>Query Matrix Builder</h1>
-            <p class="lead">Build and execute complex queries using the visual query builder.</p>
-        </div>
-    </div>
+    <h1>Query Matrix Builder</h1>
+    <p class="lead">Build and execute complex queries using the visual query builder.</p>
 
-    <div class="row">
-        <div class="col-12">
-            <QueryBuilderComponent 
-                Title="Build Your Query"
-                OnQueryExecuted="HandleQueryResults" />
-        </div>
-    </div>
-
-    @if (LastQueryResults != null)
-    {
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header">
-                        <h4>Query History</h4>
-                    </div>
-                    <div class="card-body">
-                        <!-- Query history content -->
-                    </div>
-                </div>
+    <GridStackComponent Column="12" CellHeight="70" Margin="10px">
+        <!-- Query Builder Widget -->
+        <div class="grid-stack-item" gs-id="queryBuilder" gs-x="0" gs-y="0" gs-w="8" gs-h="4">
+            <div class="grid-stack-item-content">
+                <QueryBuilderComponent 
+                    Title="Build Your Query"
+                    OnQueryExecuted="HandleQueryResults" />
             </div>
         </div>
-    }
+
+        <!-- Query History Widget -->
+        @if (LastQueryResults != null)
+        {
+                <div class="grid-stack-item" gs-id="queryHistory" gs-x="8" gs-y="0" gs-w="4" gs-h="4">
+                    <div class="grid-stack-item-content">
+                        <div class="card h-100">
+                            <div class="card-header">
+                                <h4>Query History</h4>
+                            </div>
+                            <div class="card-body">
+                                <!-- Query history content -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+        }
+    </GridStackComponent>
 </div>
 
 @code {
