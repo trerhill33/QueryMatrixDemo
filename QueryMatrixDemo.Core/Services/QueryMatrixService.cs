@@ -2,104 +2,100 @@ using QueryMatrixDemo.Core.Helpers;
 using QueryMatrixDemo.Core.Interfaces;
 using QueryMatrixDemo.Core.Models;
 using QueryMatrixDemo.Core.Operators;
+using System.Collections;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.Json;
 
-namespace QueryMatrixDemo.Core.Services;
-
-public class QueryMatrixService : IQueryMatrixService
+namespace QueryMatrixDemo.Core.Services
 {
-    public IQueryable<T> ApplyMatrix<T>(IQueryable<T> query, QueryMatrix matrix)
+    public class QueryMatrixService : IQueryMatrixService
     {
-        var expression = BuildExpression<T>(matrix);
-        return query.Where(expression);
-    }
-
-    public Expression<Func<T, bool>> BuildExpression<T>(QueryMatrix matrix)
-    {
-        // Create parameter expression (e.g., x => ...)
-        var parameter = Expression.Parameter(typeof(T), "x");
-
-        // Build the expression tree
-        var expression = BuildMatrixExpression<T>(matrix, parameter);
-
-        // Create lambda expression
-        return Expression.Lambda<Func<T, bool>>(expression, parameter);
-    }
-
-    private Expression BuildMatrixExpression<T>(QueryMatrix matrix, ParameterExpression parameter)
-    {
-        var expressions = new List<Expression>();
-
-        // Build expressions for all conditions
-        foreach (var condition in matrix.Conditions)
+        /// <summary>
+        /// Applies the specified <see cref="QueryMatrix"/> to the given <see cref="IQueryable{T}"/>.
+        /// </summary>
+        public IQueryable<T> ApplyMatrix<T>(IQueryable<T> query, QueryMatrix matrix)
         {
-            expressions.Add(BuildConditionExpression<T>(condition, parameter));
+            ArgumentNullException.ThrowIfNull(query);
+            ArgumentNullException.ThrowIfNull(matrix);
+
+            return query.Where(BuildExpression<T>(matrix));
         }
 
-        // Build expressions for nested matrices
-        foreach (var nestedMatrix in matrix.NestedMatrices)
+        /// <summary>
+        /// Builds a LINQ expression from the provided <see cref="QueryMatrix"/>.
+        /// </summary>
+        public Expression<Func<T, bool>> BuildExpression<T>(QueryMatrix matrix)
         {
-            expressions.Add(BuildMatrixExpression<T>(nestedMatrix, parameter));
+            ArgumentNullException.ThrowIfNull(matrix);
+
+            var parameter = Expression.Parameter(typeof(T), "x");
+            var expressionBody = BuildMatrixExpression<T>(matrix, parameter);
+            return Expression.Lambda<Func<T, bool>>(expressionBody, parameter);
         }
 
-        if (!expressions.Any())
+        private Expression BuildMatrixExpression<T>(QueryMatrix matrix, ParameterExpression parameter)
         {
-            return Expression.Constant(true);
+            var expressions = matrix.Conditions
+                .Select(condition => BuildConditionExpression<T>(condition, parameter))
+                .Concat(matrix.NestedMatrices.Select(nested => BuildMatrixExpression<T>(nested, parameter)))
+                .ToList();
+
+            return expressions.Count != 0
+                ? CombineExpressions(expressions, matrix.LogicalOperator)
+                : Expression.Constant(true);
         }
 
-        // Combine expressions based on logical operator
-        return CombineExpressions(expressions, matrix.LogicalOperator);
-    }
-
-    private Expression BuildConditionExpression<T>(QueryCondition condition, ParameterExpression parameter)
-    {
-        var property = Expression.Property(parameter, condition.Field);
-        var propertyType = typeof(T).GetProperty(condition.Field)!.PropertyType;
-
-        // Handle column comparison
-        if (condition.Operator.IsColumnOperation && !string.IsNullOrEmpty(condition.CompareToColumn))
+        private Expression BuildConditionExpression<T>(QueryCondition condition, ParameterExpression parameter)
         {
-            var otherProperty = Expression.Property(parameter, condition.CompareToColumn);
-            return BuildColumnComparisonExpression(property, otherProperty, condition.Operator);
+            ArgumentNullException.ThrowIfNull(condition);
+
+            var propertyInfo = typeof(T).GetProperty(condition.Field)
+                ?? throw new ArgumentException($"Property '{condition.Field}' does not exist on type '{typeof(T).Name}'.");
+
+            var property = Expression.Property(parameter, propertyInfo);
+            var propertyType = propertyInfo.PropertyType;
+
+            if (condition.Operator.IsColumnOperation && !string.IsNullOrWhiteSpace(condition.CompareToColumn))
+            {
+                var comparePropertyInfo = typeof(T).GetProperty(condition.CompareToColumn)
+                    ?? throw new ArgumentException($"Property '{condition.CompareToColumn}' does not exist on type '{typeof(T).Name}'.");
+
+                var otherProperty = Expression.Property(parameter, comparePropertyInfo);
+                return BuildColumnComparisonExpression(property, otherProperty, condition.Operator);
+            }
+
+            if (condition.Operator.IsNullOperation)
+            {
+                return Expression.Equal(property, Expression.Constant(null, propertyType));
+            }
+
+            var convertedValue = ConvertValue(condition.Value.Value, propertyType);
+            var constantExpression = Expression.Constant(convertedValue, propertyType);
+
+            return BuildComparisonExpression(property, constantExpression, condition.Operator);
         }
 
-        // Handle null checks
-        if (condition.Operator.IsNullOperation)
+        private static Expression BuildComparisonExpression(Expression property, Expression value, QueryOperator op)
         {
-            return Expression.Equal(property, Expression.Constant(null, propertyType));
+            return op.Value switch
+            {
+                "_eq" => Expression.Equal(property, value),
+                "_neq" => Expression.NotEqual(property, value),
+                "_gt" => Expression.GreaterThan(property, value),
+                "_lt" => Expression.LessThan(property, value),
+                "_gte" => Expression.GreaterThanOrEqual(property, value),
+                "_lte" => Expression.LessThanOrEqual(property, value),
+                "_like" => ExpressionHelper.BuildStringComparisonExpression(property, value, StringComparison.Ordinal),
+                "_ilike" => ExpressionHelper.BuildStringComparisonExpression(property, value, StringComparison.OrdinalIgnoreCase),
+                "_in" => ExpressionHelper.BuildInExpression(property, value),
+                "_nin" => Expression.Not(ExpressionHelper.BuildInExpression(property, value)),
+                _ => throw new NotSupportedException($"Operator '{op.Value}' is not supported.")
+            };
         }
 
-        // Convert value to property type
-        var convertedValue = ConvertValue(condition.Value.Value, propertyType);
-        var constantExpression = Expression.Constant(convertedValue, propertyType);
-
-        // Build appropriate comparison expression
-        return BuildComparisonExpression(property, constantExpression, condition.Operator);
-    }
-
-    private Expression BuildComparisonExpression(Expression property, Expression value, QueryOperator op)
-    {
-        return op.Value switch
-        {
-            "_eq" => Expression.Equal(property, value),
-            "_neq" => Expression.NotEqual(property, value),
-            "_gt" => Expression.GreaterThan(property, value),
-            "_lt" => Expression.LessThan(property, value),
-            "_gte" => Expression.GreaterThanOrEqual(property, value),
-            "_lte" => Expression.LessThanOrEqual(property, value),
-            "_like" => ExpressionHelper.BuildStringComparisonExpression(property, value, StringComparison.Ordinal),
-            "_ilike" => ExpressionHelper.BuildStringComparisonExpression(property, value, StringComparison.OrdinalIgnoreCase),
-            "_in" => ExpressionHelper.BuildInExpression(property, value),
-            "_nin" => Expression.Not(ExpressionHelper.BuildInExpression(property, value)),
-            _ => throw new NotSupportedException($"Operator {op.Value} is not supported")
-        };
-    }
-
-    private Expression BuildColumnComparisonExpression(Expression property1, Expression property2, QueryOperator op)
-    {
-        return op.Value switch
+        private static Expression BuildColumnComparisonExpression(Expression property1, Expression property2, QueryOperator op)
+            => op.Value switch
         {
             "_ceq" => Expression.Equal(property1, property2),
             "_cne" => Expression.NotEqual(property1, property2),
@@ -107,222 +103,145 @@ public class QueryMatrixService : IQueryMatrixService
             "_clt" => Expression.LessThan(property1, property2),
             "_cgte" => Expression.GreaterThanOrEqual(property1, property2),
             "_clte" => Expression.LessThanOrEqual(property1, property2),
-            _ => throw new NotSupportedException($"Column operator {op.Value} is not supported")
+            _ => throw new NotSupportedException($"Column operator '{op.Value}' is not supported.")
         };
-    }
 
-
-    private Expression CombineExpressions(List<Expression> expressions, QueryOperator logicalOperator)
-    {
-        if (expressions.Count == 0)
-            return Expression.Constant(true);
-
-        var result = expressions[0];
-        for (var i = 1; i < expressions.Count; i++)
-        {
-            result = logicalOperator.Value switch
-            {
-                "_and" => Expression.AndAlso(result, expressions[i]),
-                "_or" => Expression.OrElse(result, expressions[i]),
-                "_not" => Expression.Not(result),
-                _ => throw new NotSupportedException($"Logical operator {logicalOperator.Value} is not supported")
-            };
-        }
-
-        return result;
-    }
-
-    private Expression CombineExpressions(IEnumerable<Expression> expressions, QueryOperator logicalOperator)
-    {
-        return logicalOperator.Value switch
+        private static Expression CombineExpressions(IEnumerable<Expression> expressions, QueryOperator logicalOperator)
+            => logicalOperator.Value switch
         {
             "_and" => expressions.Aggregate(Expression.AndAlso),
             "_or" => expressions.Aggregate(Expression.OrElse),
-            "_not" => Expression.Not(expressions.Single()),
-            _ => throw new NotSupportedException($"Logical operator {logicalOperator.Value} is not supported")
+            "_not" when expressions.Count() == 1 => Expression.Not(expressions.Single()),
+            _ => throw new NotSupportedException($"Logical operator '{logicalOperator.Value}' is not supported.")
         };
-    }
 
-
-    private object? ConvertValue(object? value, Type targetType)
-    {
-        if (value == null)
-            return null;
-
-        // Handle JsonElement
-        if (value is JsonElement jsonElement)
+        private object? ConvertValue(object? value, Type targetType)
         {
-            return ConvertJsonElement(jsonElement, targetType);
+            if (value == null)
+                return null;
+
+            return value switch
+            {
+                JsonElement jsonElement => ConvertJsonElement(jsonElement, targetType),
+                _ => ConvertGenericValue(value, targetType)
+            };
         }
 
-        // Handle nullable types
-        if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(Nullable<>))
+        private object? ConvertGenericValue(object value, Type targetType)
         {
-            targetType = Nullable.GetUnderlyingType(targetType)!;
+            var underlyingType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+            return underlyingType.IsEnum
+                ? value switch
+                {
+                    string s => Enum.Parse(underlyingType, s, ignoreCase: true),
+                    int i => Enum.ToObject(underlyingType, i),
+                    _ => throw new InvalidCastException($"Cannot convert value '{value}' to enum type '{underlyingType.Name}'.")
+                }
+                : targetType.IsArray && value is IEnumerable enumerable
+                    ? CreateTypedArray(enumerable, targetType)
+                    : value is IConvertible
+                        ? ConvertStandardType(value, underlyingType)
+                        : throw new InvalidCastException($"Value '{value}' must implement IConvertible to convert to type '{underlyingType.Name}'.");
         }
 
-        // Handle enums
-        if (targetType.IsEnum)
+        private Array CreateTypedArray(IEnumerable enumerable, Type arrayType)
         {
-            if (value is string stringValue)
-                return Enum.Parse(targetType, stringValue, ignoreCase: true);
-            if (value is int intValue)
-                return Enum.ToObject(targetType, intValue);
-
-            throw new InvalidCastException($"Cannot convert value '{value}' to enum type '{targetType.Name}'.");
-        }
-
-        // Handle collections for IN/NOT IN operators
-        if (targetType.IsArray && value is IEnumerable<object> enumerable)
-        {
-            var elementType = targetType.GetElementType() 
+            var elementType = arrayType.GetElementType()
                 ?? throw new InvalidOperationException("Cannot determine the element type of the target array.");
-            var array = enumerable
+
+            var convertedValues = enumerable.Cast<object>()
                 .Select(item => ConvertValue(item, elementType))
                 .ToArray();
 
-            var typedArray = Array.CreateInstance(elementType, array.Length);
-            Array.Copy(array, typedArray, array.Length);
+            var typedArray = Array.CreateInstance(elementType, convertedValues.Length);
+            Array.Copy(convertedValues, typedArray, convertedValues.Length);
             return typedArray;
         }
 
-        // Handle standard type conversions
-        if (value is IConvertible)
+        private static object ConvertStandardType(object value, Type targetType)
         {
             try
             {
                 return Convert.ChangeType(value, targetType);
             }
-            catch (InvalidCastException)
+            catch (Exception ex) when (ex is InvalidCastException || ex is FormatException)
             {
-                throw new InvalidCastException($"Value '{value}' cannot be converted to type '{targetType.Name}'.");
+                throw new InvalidCastException($"Value '{value}' cannot be converted to type '{targetType.Name}'.", ex);
             }
         }
-        Console.WriteLine($"Value: {value}, Value Type: {value?.GetType()}, Target Type: {targetType}");
-        var ss = value?.GetType();
 
-
-        // Can't figure it out
-        throw new InvalidCastException($"Value '{value}' must implement IConvertible to convert to type '{targetType.Name}'.");
-    }
-
-    private object? ConvertJsonElement(JsonElement jsonElement, Type targetType)
-    {
-        if (targetType == typeof(string))
+        private static object? ConvertJsonElement(JsonElement jsonElement, Type targetType)
         {
-            return jsonElement.GetString();
-        }
-        if (targetType == typeof(int))
-        {
-            return jsonElement.TryGetInt32(out var result) ? result : throw new InvalidCastException($"Cannot convert '{jsonElement}' to int.");
-        }
-        if (targetType == typeof(long))
-        {
-            return jsonElement.TryGetInt64(out var result) ? result : throw new InvalidCastException($"Cannot convert '{jsonElement}' to long.");
-        }
-        if (targetType == typeof(bool))
-        {
-            if (jsonElement.ValueKind == JsonValueKind.True || jsonElement.ValueKind == JsonValueKind.False)
+            return targetType switch
             {
-                return jsonElement.GetBoolean();
-            }
-            throw new InvalidCastException($"Cannot convert '{jsonElement}' to bool. Value is not a boolean.");
-        }
-        if (targetType == typeof(double))
-        {
-            return jsonElement.TryGetDouble(out var result) ? result : throw new InvalidCastException($"Cannot convert '{jsonElement}' to double.");
-        }
-        if (targetType == typeof(DateTime))
-        {
-            return jsonElement.TryGetDateTime(out var result) ? result : throw new InvalidCastException($"Cannot convert '{jsonElement}' to DateTime.");
-        }
-
-        throw new InvalidCastException($"JsonElement type '{jsonElement.ValueKind}' cannot be converted to '{targetType.Name}'.");
-    }
-
-    public IEnumerable<PropertyInfo> GetFilterableProperties<T>()
-    {
-        return typeof(T).GetProperties()
-            .Where(p => IsFilterableType(p.PropertyType));
-    }
-
-    public IEnumerable<QueryOperator> GetValidOperatorsForProperty(PropertyInfo property)
-    {
-        if (property == null)
-            return [];
-
-        var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-
-        return QueryOperator.All.Where(op => IsOperatorValidForType(op, type));
-    }
-
-    private bool IsFilterableType(Type type)
-    {
-        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
-        {
-            type = Nullable.GetUnderlyingType(type)!;
+                Type t when t == typeof(string) => jsonElement.GetString(),
+                Type t when t == typeof(int) => jsonElement.TryGetInt32(out var intResult) ? intResult : throw new InvalidCastException($"Cannot convert '{jsonElement}' to int."),
+                Type t when t == typeof(long) => jsonElement.TryGetInt64(out var longResult) ? longResult : throw new InvalidCastException($"Cannot convert '{jsonElement}' to long."),
+                Type t when t == typeof(bool) => jsonElement.ValueKind switch
+                {
+                    JsonValueKind.True => true,
+                    JsonValueKind.False => false,
+                    _ => throw new InvalidCastException($"Cannot convert '{jsonElement}' to bool. Value is not a boolean.")
+                },
+                Type t when t == typeof(double) => jsonElement.TryGetDouble(out var doubleResult) ? doubleResult : throw new InvalidCastException($"Cannot convert '{jsonElement}' to double."),
+                Type t when t == typeof(DateTime) => jsonElement.TryGetDateTime(out var dateResult) ? dateResult : throw new InvalidCastException($"Cannot convert '{jsonElement}' to DateTime."),
+                _ => throw new InvalidCastException($"JsonElement type '{jsonElement.ValueKind}' cannot be converted to '{targetType.Name}'.")
+            };
         }
 
-        return type.IsPrimitive
-            || type == typeof(string)
-            || type == typeof(DateTime)
-            || type == typeof(decimal)
-            || type == typeof(Guid)
-            || type.IsEnum;
-    }
-
-    private bool IsOperatorValidForType(QueryOperator op, Type propertyType)
-    {
-        // Handle null operations
-        if (op.IsNullOperation)
+        public IEnumerable<PropertyInfo> GetFilterableProperties<T>()
         {
-            return true; // Null operations are valid for all types
+            return typeof(T).GetProperties()
+                .Where(p => IsFilterableType(p.PropertyType));
         }
 
-        // Handle text operations
-        if (op.IsTextOperation)
+        public IEnumerable<QueryOperator> GetValidOperatorsForProperty(PropertyInfo property)
         {
-            return propertyType == typeof(string);
+            ArgumentNullException.ThrowIfNull(property);
+
+            var type = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+
+            return QueryOperator.All.Where(op => IsOperatorValidForType(op, type));
         }
 
-        // Handle column operations
-        if (op.IsColumnOperation)
+        private static bool IsFilterableType(Type type)
         {
-            return true; // Column operations are valid for all types when comparing same types
+            var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+
+            return underlyingType.IsPrimitive
+                || underlyingType == typeof(string)
+                || underlyingType == typeof(DateTime)
+                || underlyingType == typeof(decimal)
+                || underlyingType == typeof(Guid)
+                || underlyingType.IsEnum;
         }
 
-        // Handle logical operations
-        if (op.IsLogicalOperation)
+        private bool IsOperatorValidForType(QueryOperator op, Type propertyType)
         {
-            return true;
+            return op switch
+            {
+                var o when o.IsNullOperation => true,
+                var o when o.IsTextOperation => propertyType == typeof(string),
+                var o when o.IsColumnOperation => true,
+                var o when o.IsLogicalOperation => true,
+                var o when (o.Value == "_eq" || o.Value == "_neq") => true,
+                var o when (o.Value == "_gt" || o.Value == "_lt" || o.Value == "_gte" || o.Value == "_lte") => IsComparableType(propertyType),
+                var o when (o.Value == "_in" || o.Value == "_nin") => true,
+                _ => false,
+            };
         }
 
-        // Handle comparison operators based on type
-        return op.Value switch
+        private static bool IsComparableType(Type type)
         {
-            "_eq" or "_neq" => true,// Equals and Not Equals work for all types
-            "_gt" or "_lt" or "_gte" or "_lte" => IsComparableType(propertyType),
-            "_in" or "_nin" => true,// In and Not In work for all types
-            _ => false,
-        };
-    }
+            var comparableTypes = new HashSet<Type>
+            {
+                typeof(int), typeof(long), typeof(float), typeof(double), typeof(decimal),
+                typeof(DateTime), typeof(TimeSpan), typeof(char), typeof(byte),
+                typeof(sbyte), typeof(short), typeof(ushort), typeof(uint), typeof(ulong)
+            };
 
-    private bool IsComparableType(Type type)
-    {
-        return type == typeof(int)
-            || type == typeof(long)
-            || type == typeof(float)
-            || type == typeof(double)
-            || type == typeof(decimal)
-            || type == typeof(DateTime)
-            || type == typeof(TimeSpan)
-            || type == typeof(char)
-            || type == typeof(byte)
-            || type == typeof(sbyte)
-            || type == typeof(short)
-            || type == typeof(ushort)
-            || type == typeof(uint)
-            || type == typeof(ulong)
-            || type.IsEnum;
+            return comparableTypes.Contains(type) || type.IsEnum;
+        }
     }
 }
