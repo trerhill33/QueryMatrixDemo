@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using QueryMatrixDemo.Client.Server.Context;
-using QueryMatrixDemo.Core.Interfaces;
-using QueryMatrixDemo.Core.Models;
+using QueryMatrixDemo.Core._old.Interfaces;
+using QueryMatrixDemo.Core._old.Models;
 using QueryMatrixDemo.Shared.Entities;
 
 namespace QueryMatrixDemo.Client.Server.Controllers;

@@ -2,8 +2,8 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using QueryMatrixDemo.Client.Client;
-using QueryMatrixDemo.Core.Interfaces;
-using QueryMatrixDemo.Core.Services;
+using QueryMatrixDemo.Core._old.Interfaces;
+using QueryMatrixDemo.Core._old.Services;
 
 var builder = WebAssemblyHostBuilder.CreateDefault(args);
 builder.RootComponents.Add<App>("#app");

@@ -10,25 +10,22 @@
         {
             <div class="group-header mb-3 d-flex justify-content-between align-items-center">
                 <div class="operator-select">
-                    <select class="form-select form-select-sm" value="@Matrix.LogicalOperator.Value" @onchange="OnLogicalOperatorChanged">
-                        <option value="@QueryOperator.And.Value">AND</option>
-                        <option value="@QueryOperator.Or.Value">OR</option>
+                    <select class="form-select form-select-sm" value="@Matrix.LogicalOperator" @onchange="OnLogicalOperatorChanged">
+                        <option value="@QueryOperator.And">AND</option>
+                        <option value="@QueryOperator.Or">OR</option>
                     </select>
                 </div>
-                @if (Level > 0)
-                {
-                    <button class="btn btn-outline-danger btn-sm ms-2" @onclick="RequestRemove">
-                        <span class="oi oi-trash"></span> Remove Group
-                    </button>
-                }
+                <button class="btn btn-outline-danger btn-sm ms-2" @onclick="RequestRemove">
+                    <span class="oi oi-trash"></span> Remove Group
+                </button>
             </div>
         }
         else
         {
             <div class="operator-select" style="width: 200px;">
-                <select class="form-select form-select-sm" value="@Matrix.LogicalOperator.Value" @onchange="OnLogicalOperatorChanged">
-                    <option value="@QueryOperator.And.Value">AND</option>
-                    <option value="@QueryOperator.Or.Value">OR</option>
+                <select class="form-select form-select-sm" value="@Matrix.LogicalOperator" @onchange="OnLogicalOperatorChanged">
+                    <option value="@QueryOperator.And">AND</option>
+                    <option value="@QueryOperator.Or">OR</option>
                 </select>
             </div>
         }
@@ -62,16 +59,13 @@
         </div>
     }
 
-    <div class="group-actions mb-3">
-<div class="group-actions mb-3 d-flex justify-content-start">
-    <button class="btn btn-outline-primary btn-sm me-2" @onclick="AddCondition">
-        <span class="oi oi-plus"></span> Add Condition
-    </button>
-    <button class="btn btn-outline-secondary btn-sm" @onclick="AddNestedGroup">
-        <span class="oi oi-layers"></span> Add Group
-    </button>
-</div>
-
+    <div class="group-actions mb-3 d-flex justify-content-start">
+        <button class="btn btn-outline-primary btn-sm me-2" @onclick="AddCondition">
+            <span class="oi oi-plus"></span> Add Condition
+        </button>
+        <button class="btn btn-outline-secondary btn-sm" @onclick="AddNestedGroup">
+            <span class="oi oi-layers"></span> Add Group
+        </button>
     </div>
 </div>
 
@@ -84,11 +78,12 @@
 
     private async Task OnLogicalOperatorChanged(ChangeEventArgs e)
     {
-        var operatorValue = e.Value?.ToString() ?? QueryOperator.And.Value;
-        var newOperator = QueryOperator.FromString(operatorValue) ?? QueryOperator.And;
-        
-        Matrix = Matrix with { LogicalOperator = newOperator };
-        await OnMatrixChanged.InvokeAsync(Matrix);
+        var operatorValue = e.Value?.ToString() ?? QueryOperator.And.ToString();
+        if (Enum.TryParse<QueryOperator>(operatorValue, true, out var newOperator))
+        {
+            Matrix.LogicalOperator = newOperator;
+            await OnMatrixChanged.InvokeAsync(Matrix);
+        }
     }
 
     private async Task AddCondition()
@@ -96,20 +91,16 @@
         var firstProperty = AvailableProperties.FirstOrDefault();
         var defaultOperator = firstProperty != null 
             ? QueryMatrixService.GetValidOperatorsForProperty(firstProperty).First()
-            : QueryOperator.Equal;
+            : QueryOperator.Equals;
 
         var newCondition = new QueryCondition
         {
             Field = firstProperty?.Name ?? string.Empty,
             Operator = defaultOperator,
-            Value = ConditionValue.Single(string.Empty)
+            Value = GetDefaultValue(firstProperty?.PropertyType.FullName ?? "System.String")
         };
 
-        Matrix = Matrix with
-        {
-            Conditions = Matrix.Conditions.Append(newCondition).ToList()
-        };
-
+        Matrix.Conditions.Add(newCondition);
         await OnMatrixChanged.InvokeAsync(Matrix);
     }
 
@@ -122,58 +113,62 @@
             NestedMatrices = new List<QueryMatrix>()
         };
 
-        Matrix = Matrix with
-        {
-            NestedMatrices = Matrix.NestedMatrices.Append(nestedMatrix).ToList()
-        };
-
+        Matrix.NestedMatrices.Add(nestedMatrix);
         await OnMatrixChanged.InvokeAsync(Matrix);
     }
 
     private async Task HandleConditionChanged(QueryCondition oldCondition, QueryCondition newCondition)
     {
-        var conditions = Matrix.Conditions.ToList();
-        var index = conditions.IndexOf(oldCondition);
+        var index = Matrix.Conditions.IndexOf(oldCondition);
         if (index >= 0)
         {
-            conditions[index] = newCondition;
-            Matrix = Matrix with { Conditions = conditions };
+            Matrix.Conditions[index] = newCondition;
             await OnMatrixChanged.InvokeAsync(Matrix);
         }
     }
 
     private async Task HandleNestedMatrixChanged(QueryMatrix oldMatrix, QueryMatrix newMatrix)
     {
-        var matrices = Matrix.NestedMatrices.ToList();
-        var index = matrices.IndexOf(oldMatrix);
+        var index = Matrix.NestedMatrices.IndexOf(oldMatrix);
         if (index >= 0)
         {
-            matrices[index] = newMatrix;
-            Matrix = Matrix with { NestedMatrices = matrices };
+            Matrix.NestedMatrices[index] = newMatrix;
             await OnMatrixChanged.InvokeAsync(Matrix);
         }
     }
 
     private async Task RemoveCondition(QueryCondition condition)
     {
-        Matrix = Matrix with
-        {
-            Conditions = Matrix.Conditions.Where(c => c != condition).ToList()
-        };
+        Matrix.Conditions.Remove(condition);
         await OnMatrixChanged.InvokeAsync(Matrix);
     }
 
     private async Task RemoveNestedMatrix(QueryMatrix nestedMatrix)
     {
-        Matrix = Matrix with
-        {
-            NestedMatrices = Matrix.NestedMatrices.Where(m => m != nestedMatrix).ToList()
-        };
+        Matrix.NestedMatrices.Remove(nestedMatrix);
         await OnMatrixChanged.InvokeAsync(Matrix);
     }
 
     private async Task RequestRemove()
     {
         await OnRequestRemove.InvokeAsync();
+    }
+
+    private ConditionValue GetDefaultValue(string propertyType)
+    {
+        Type type = Type.GetType(propertyType) ?? typeof(string);
+
+        if (type == typeof(string))
+            return new ConditionValue(string.Empty, ConditionValueType.Single);
+        if (type == typeof(int))
+            return new ConditionValue(0, ConditionValueType.Single);
+        if (type == typeof(decimal))
+            return new ConditionValue(0m, ConditionValueType.Single);
+        if (type == typeof(DateTime))
+            return new ConditionValue(DateTime.Now, ConditionValueType.Single);
+        if (type == typeof(bool))
+            return new ConditionValue(false, ConditionValueType.Single);
+
+        return new ConditionValue(string.Empty, ConditionValueType.Single);
     }
 }

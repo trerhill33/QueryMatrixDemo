@@ -1,5 +1,8 @@
-namespace QueryMatrixDemo.Core.Operators;
+﻿namespace QueryMatrixDemo.Core.Core.Operators;
 
+/// <summary>
+/// Defines various operators used in query conditions, including standard comparison, text matching, null checks, column comparisons, and logical operators, each associated with a value, description, and type.
+/// </summary>
 public sealed record QueryOperator(string Value, string Description, OperatorType Type = OperatorType.Comparison)
 {
     public bool IsColumnOperation => Type == OperatorType.ColumnComparison;
@@ -49,7 +52,7 @@ public sealed record QueryOperator(string Value, string Description, OperatorTyp
     public static readonly QueryOperator Not = new("_not", "logical not", OperatorType.Logical);
     #endregion
 
-    public static readonly IReadOnlyCollection<QueryOperator> All = 
+    public static readonly IReadOnlyCollection<QueryOperator> All =
     [
         Equal, NotEqual, GreaterThan, LessThan, GreaterThanOrEqual, LessThanOrEqual, In, NotIn,
         Like, ILike, NotLike, Similar, NotSimilar, Regex, IRegex,
@@ -59,7 +62,7 @@ public sealed record QueryOperator(string Value, string Description, OperatorTyp
         And, Or, Not
     ];
 
-    public static QueryOperator? FromString(string value) =>
-        All.FirstOrDefault(op => op.Value == value) 
+    public static QueryOperator FromString(string value) =>
+        All.FirstOrDefault(op => op.Value == value)
         ?? throw new ArgumentException($"Unsupported operator: {value}", nameof(value));
 }

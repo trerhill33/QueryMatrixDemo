@@ -1,7 +1,7 @@
 @using System.Reflection
-@using QueryMatrixDemo.Core.Models
-@using QueryMatrixDemo.Core.Operators
-@using QueryMatrixDemo.Core.Interfaces
+@using QueryMatrixDemo.Core.Core.Models
+@using QueryMatrixDemo.Core.Core.Operators
+
 @inject IQueryMatrixService QueryMatrixService
 
 <div class="condition-editor border p-3 mb-2">
@@ -21,14 +21,14 @@
         <!-- Operator Selection -->
         <div class="col-md-3">
             <label class="form-label">Operator</label>
-            <select class="form-select" value="@Condition.Operator?.Value" @onchange="OnOperatorChanged" 
+            <select class="form-select" value="@Condition.Operator" @onchange="OnOperatorChanged"
                     disabled="@string.IsNullOrEmpty(Condition.Field)">
                 <option value="">Select operator...</option>
                 @if (!string.IsNullOrEmpty(Condition.Field))
                 {
                     @foreach (var op in GetValidOperators())
                     {
-                        <option value="@op.Value">@op.Description</option>
+                        <option value="@op">@op</option>
                     }
                 }
             </select>
@@ -37,7 +37,7 @@
         <!-- Value Input -->
         <div class="col-md-5">
             <label class="form-label">Value</label>
-            @if (Condition.Operator?.IsColumnOperation == true)
+            @if (IsColumnOperation(Condition.Operator))
             {
                 <select class="form-select" value="@Condition.CompareToColumn" @onchange="OnCompareToColumnChanged">
                     <option value="">Select comparison field...</option>
@@ -47,7 +47,7 @@
                     }
                 </select>
             }
-            else if (Condition.Operator?.IsNullOperation == true)
+            else if (IsNullOperation(Condition.Operator))
             {
                 <select class="form-select" @onchange="OnNullValueChanged">
                     <option value="true">Is Null</option>
@@ -59,19 +59,19 @@
                 @switch (GetSelectedPropertyType())
                 {
                     case "System.String":
-                        <input type="text" class="form-control" value="@GetStringValue()" 
+                        <input type="text" class="form-control" value="@GetStringValue()"
                                @onchange="OnValueChanged" />
                         break;
                     case "System.Int32":
-                        <input type="number" class="form-control" value="@GetIntValue()" 
+                        <input type="number" class="form-control" value="@GetIntValue()"
                                @onchange="OnValueChanged" />
                         break;
                     case "System.Decimal":
-                        <input type="number" class="form-control" step="0.01" value="@GetDecimalValue()" 
+                        <input type="number" class="form-control" step="0.01" value="@GetDecimalValue()"
                                @onchange="OnValueChanged" />
                         break;
                     case "System.DateTime":
-                        <input type="datetime-local" class="form-control" value="@GetDateTimeValue()" 
+                        <input type="datetime-local" class="form-control" value="@GetDateTimeValue()"
                                @onchange="OnValueChanged" />
                         break;
                     case "System.Boolean":
@@ -81,7 +81,7 @@
                         </select>
                         break;
                     default:
-                        <input type="text" class="form-control" value="@GetStringValue()" 
+                        <input type="text" class="form-control" value="@GetStringValue()"
                                @onchange="OnValueChanged" />
                         break;
                 }
@@ -135,22 +135,34 @@
         return property?.PropertyType.FullName ?? "System.String";
     }
 
+    private bool IsColumnOperation(QueryOperator? op)
+    {
+        // Define which operators are column operations
+        return op == QueryOperator.ColumnEquals || op == QueryOperator.ColumnNotEquals;
+    }
+
+    private bool IsNullOperation(QueryOperator? op)
+    {
+        // Define which operators are null operations
+        return op == QueryOperator.IsNull || op == QueryOperator.IsNotNull;
+    }
+
     private async Task OnFieldChanged(ChangeEventArgs e)
     {
         var newField = e.Value?.ToString() ?? string.Empty;
         var property = AvailableProperties.FirstOrDefault(p => p.Name == newField);
-        
+
         if (property != null)
         {
             var validOperators = QueryMatrixService.GetValidOperatorsForProperty(property);
-            var defaultOperator = validOperators.FirstOrDefault();
+            var defaultOperator = validOperators.FirstOrDefault() ?? QueryOperator.Equals;
 
-            Condition = Condition with 
-            { 
-                Field = newField,
-                Operator = defaultOperator,
-                Value = GetDefaultValue(property.PropertyType)
-            };
+            Condition = new QueryCondition
+                {
+                    Field = newField,
+                    Operator = defaultOperator,
+                    Value = GetDefaultValue(property.PropertyType)
+                };
 
             await OnConditionChanged.InvokeAsync(Condition);
         }
@@ -159,11 +171,27 @@
     private async Task OnOperatorChanged(ChangeEventArgs e)
     {
         var operatorValue = e.Value?.ToString() ?? string.Empty;
-        var newOperator = QueryOperator.FromString(operatorValue);
-        
-        if (newOperator != null)
+        if (Enum.TryParse<QueryOperator>(operatorValue, true, out var newOperator))
         {
-            Condition = Condition with { Operator = newOperator };
+            Condition.Operator = newOperator;
+
+            // Reset value based on operator type
+            if (IsColumnOperation(newOperator))
+            {
+                Condition.Value = new ConditionValue(string.Empty, ConditionValueType.Column);
+                Condition.CompareToColumn = string.Empty;
+            }
+            else if (IsNullOperation(newOperator))
+            {
+                Condition.Value = new ConditionValue(null, ConditionValueType.Null);
+                Condition.CompareToColumn = null;
+            }
+            else
+            {
+                Condition.Value = GetDefaultValue(GetSelectedPropertyType());
+                Condition.CompareToColumn = null;
+            }
+
             await OnConditionChanged.InvokeAsync(Condition);
         }
     }
@@ -171,25 +199,27 @@
     private async Task OnValueChanged(ChangeEventArgs e)
     {
         var newValue = ConvertValue(e.Value?.ToString(), GetSelectedPropertyType());
-        Condition = Condition with { Value = ConditionValue.Single(newValue) };
+        Condition.Value = new ConditionValue(newValue, ConditionValueType.Single);
+        Condition.CompareToColumn = null;
+
         await OnConditionChanged.InvokeAsync(Condition);
     }
 
     private async Task OnCompareToColumnChanged(ChangeEventArgs e)
     {
         var columnName = e.Value?.ToString() ?? string.Empty;
-        Condition = Condition with 
-        { 
-            Value = ConditionValue.Column(columnName),
-            CompareToColumn = columnName
-        };
+        Condition.Value = new ConditionValue(columnName, ConditionValueType.Column);
+        Condition.CompareToColumn = columnName;
+
         await OnConditionChanged.InvokeAsync(Condition);
     }
 
     private async Task OnNullValueChanged(ChangeEventArgs e)
     {
         var isNull = bool.Parse(e.Value?.ToString() ?? "true");
-        Condition = Condition with { Value = ConditionValue.Null() };
+        Condition.Value = isNull ? new ConditionValue(null, ConditionValueType.Null) : new ConditionValue(null, ConditionValueType.NotNull);
+        Condition.CompareToColumn = null;
+
         await OnConditionChanged.InvokeAsync(Condition);
     }
 
@@ -198,34 +228,36 @@
         await OnRemoveCondition.InvokeAsync();
     }
 
-    private ConditionValue GetDefaultValue(Type propertyType)
+    private ConditionValue GetDefaultValue(string propertyType)
     {
-        if (propertyType == typeof(string))
-            return ConditionValue.Single(string.Empty);
-        if (propertyType == typeof(int))
-            return ConditionValue.Single(0);
-        if (propertyType == typeof(decimal))
-            return ConditionValue.Single(0m);
-        if (propertyType == typeof(DateTime))
-            return ConditionValue.Single(DateTime.Now);
-        if (propertyType == typeof(bool))
-            return ConditionValue.Single(false);
-        
-        return ConditionValue.Single(string.Empty);
+        Type type = Type.GetType(propertyType) ?? typeof(string);
+
+        if (type == typeof(string))
+            return new ConditionValue(string.Empty, ConditionValueType.Single);
+        if (type == typeof(int))
+            return new ConditionValue(0, ConditionValueType.Single);
+        if (type == typeof(decimal))
+            return new ConditionValue(0m, ConditionValueType.Single);
+        if (type == typeof(DateTime))
+            return new ConditionValue(DateTime.Now, ConditionValueType.Single);
+        if (type == typeof(bool))
+            return new ConditionValue(false, ConditionValueType.Single);
+
+        return new ConditionValue(string.Empty, ConditionValueType.Single);
     }
 
     private string GetStringValue() => Condition.Value.Value?.ToString() ?? string.Empty;
     private string GetIntValue() => Condition.Value.Value?.ToString() ?? "0";
     private string GetDecimalValue() => Condition.Value.Value?.ToString() ?? "0.00";
-    private string GetDateTimeValue() => 
-        (Condition.Value.Value as DateTime?)?.ToString("yyyy-MM-ddTHH:mm") ?? 
+    private string GetDateTimeValue() =>
+        (Condition.Value.Value as DateTime?)?.ToString("yyyy-MM-ddTHH:mm") ??
         DateTime.Now.ToString("yyyy-MM-ddTHH:mm");
     private string GetBoolValue() => Condition.Value.Value?.ToString()?.ToLower() ?? "false";
 
     private object ConvertValue(string? value, string propertyType)
     {
         if (string.IsNullOrEmpty(value))
-            return GetDefaultValue(Type.GetType(propertyType) ?? typeof(string)).Value!;
+            return GetDefaultValue(propertyType).Value!;
 
         return propertyType switch
         {
